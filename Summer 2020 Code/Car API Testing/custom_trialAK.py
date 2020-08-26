@@ -2,7 +2,10 @@
 """
 Created on Sun May 31 03:44:40 2020
 
-@author: amk170930
+@author: Aadi Kothari
+This class was created solely for testing purposes, as well as to get more information about sensors,
+plotting function, timestep, etc. It contains a plot function, a time step function, and uses car
+state and sensor data.
 """
 
 
@@ -22,7 +25,7 @@ class testingAK:
     clockSpeed =  1#From settings.json
     clockSpeedMult = 1/clockSpeed
     
-    frequency = 10
+    frequency = 1
     plotFreq = 1
     #Assumption: plotFreq<frequency
     timePeriod = 1/(frequency*clockSpeed)
@@ -100,20 +103,16 @@ class testingAK:
         print("Turn left")
         car_state = client.getCarState()
         pos = car_state.kinematics_estimated.position
+        
+        #Set start position
         self.startPosition = [pos.x_val,pos.y_val,pos.z_val]
-        #VehicleClient.simPrintLogMessage("X position:",str(pos.x_val),1)
-        #VehicleClient.simPrintLogMessage("Y position:",str(pos.y_val),1)
-        #VehicleClient.simPrintLogMessage("Z position:",str(pos.z_val),1)
-        #print("X position: %f   Y position: %f   Z position: %f"% (pos.x_val,pos.y_val,pos.z_val))
+        time.sleep(5)
         
-        
-        #time.sleep(5)
         self.timeStep(5*self.clockSpeedMult)
         sensor_state = VehicleClient.getImuData()
         currentTime  = sensor_state.time_stamp/1000000000 - 5
         prevTime = currentTime
-        #print("Difference: %f"% (currentTime-prevTime))
-        
+
         #Go forward
         car_controls.throttle = 1
         car_controls.steering = 0
@@ -121,7 +120,7 @@ class testingAK:
         print("Go forward")
         prevTime = datetime.now().timestamp()
         self.timeStep(2.5*self.clockSpeedMult)
-        #time.sleep(2.5)
+        time.sleep(2.5)
         
         #self.Plot(client)
         

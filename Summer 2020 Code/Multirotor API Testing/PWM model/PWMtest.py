@@ -7,16 +7,10 @@ G"""
 
 
 import numpy as np
+from numpy import linalg as la
 import airsim
-from airsim import Vector3r
 import time
-import xlrd
-import control
-import matrixmath
 import gain_matrix_calculator as calK
-from scipy import signal
-from squaternion import Quaternion
-import control.matlab
 from scipy.spatial.transform import Rotation as R
 
 class PWMtest:
@@ -52,8 +46,8 @@ class LQRtestPWM:
         max_angular_vel = 6393.667 * 2 * np.pi / 60
         
         #Final state
-        x_bar = np.array([[0.0],
-                          [0.0],
+        x_bar = np.array([[1.0],
+                          [1.0],
                           [10.0],
                           [0.0],
                           [0.0],
@@ -88,90 +82,79 @@ class LQRtestPWM:
                 
                 time.sleep(2)
         
-
-        
-        # Declare u matrix 4 x 1
-        # u = [0,
-        #      0,
-        #      0,
-        #      0]
-        # pwm = np.array([0,
-        #                 0,
-        #                 0,
-        #                 0])
         
         print("Controls start")
-        #time.sleep(2)
-        #multirotorClient.moveByMotorPWMsAsync(1, 1, 1, 1,3).join()
-        #newX = [[],[],[],[],[],[],[],[],[],[],[],[]]
-        # Start step loop
-        for index in range(1000):
-            # Re initilize u for every iteration
-            # u = [0,
-            #      0,
-            #      0,
-            #      0]
+ 
+        for index in range(100):
 
             # Get state of the multiorotor
             state = multirotorClient.getMultirotorState()
             state = state.kinematics_estimated
             
-            initialState = state.position
+            #initialState = state.position
             
-            #Convert from quaternion to euler angle
-            #euler = ls.quaternion_to_euler(state.orientation.x_val,state.orientation.y_val, state.orientation.z_val,state.orientation.w_val)
-            
-            # Convert quaternion to rotation object
-            q = R.from_quat([state.orientation.x_val,
-                             state.orientation.y_val,
-                             state.orientation.z_val,
-                             state.orientation.w_val])
-            # Convert rotation object to euler angles
-            #e = np.array(q.as_euler('zyx'))
-            
+            #Debugging point
+            pt = np.array([[0],
+                           [0],
+                           [1]])
             # Define rotation matrix (check2nd row sign)
-            
-            #Rotae 45 degrees in z
-            R1 = np.array([[ np.sqrt(2)/2, np.sqrt(2)/2, 0],
-                           [-np.sqrt(2)/2, np.sqrt(2)/2, 0],
-                           [            0,            0, 1]])
+            rotationMatrix = np.array([[1, 0, 0],
+                                       [0, 1, 0],
+                                       [0, 0, 1]])
+            Rx = np.array([[1, 0, 0],
+                           [0, np.cos(np.pi), -np.sin(np.pi)],
+                           [0, np.sin(np.pi), np.cos(np.pi)]])
+        
+            Rz = np.array([[np.cos(-np.pi/4), -np.sin(-np.pi/4), 0],
+                          [np.sin(-np.pi/4), np.cos(-np.pi/4), 0],
+                          [0, 0, 1]])
+            #Rotate 45 degrees in z
+            R1 = np.array([[ np.sqrt(2)/2, -np.sqrt(2)/2, 0],
+                           [ np.sqrt(2)/2,  np.sqrt(2)/2, 0],
+                           [            0,            0,  1]])
             # Rotate 180 in x
             R2 = np.array([[1, 0 , 0],
                            [0, -1, 0],
                            [0, 0, -1]])
-            # Rotate 90 in z
-            R3 = np.array([[0, 1, 0],
-                           [1, 0, 0],
-                           [0, 0, 1]])
-            # rotationMatrix =np.dot(np.array([[np.sqrt(2)/2, -np.sqrt(2)/2, 0],
-            #                                 [-np.sqrt(2)/2, -np.sqrt(2)/2, 0],
-            #                                 [0, 0, -1]])
+            rotationMatrix = np.dot(Rx, Rz)
             
-            rotationMatrix = np.dot(R1, R2)
-            rotationMatrix = np.dot(R3, rotationMatrix)
+            #print(np.dot(rotationMatrix,pt))
+            # Rotate 90 clockwise in z
+            # R3 = np.array([ [ 0, 1, 0],
+            #                 [-1, 0, 0],
+            #                 [ 0, 0, 1]])
+
+            #rotationMatrix = np.dot(R3, rotationMatrix)
             # Apply rotation to position
             position = np.dot(rotationMatrix,np.array([[state.position.x_val], 
                                                        [state.position.y_val], 
                                                        [state.position.z_val]]))   
             # Apply rotation to linear velocity
             linear_velocity =  np.dot(rotationMatrix,np.array([[state.linear_velocity.x_val], 
-                                                               [state.linear_velocity.y_val], 
+                                                         [state.linear_velocity.y_val], 
                                                                [state.linear_velocity.z_val]]))
+            
+            # Convert quaternion to rotation object
+            q = R.from_quat([state.orientation.x_val,
+                             state.orientation.y_val,
+                             state.orientation.z_val,
+                             state.orientation.w_val])
+            
             # Apply rotation to euler angles and convert them back to euler
             r = (R.from_matrix(np.dot(rotationMatrix, q.as_matrix())))
-            orientation = r.as_euler('zyx')
+            # Debugged 'zyx' to 'xyz' to match https://www.andre-gaschler.com/rotationconverter/
+            orientation = r.as_euler('xyz')
             
             # r = np.dot(rotationMatrix, np.array([[state.angular_velocity.x_val],
             #                                      [state.angular_velocity.y_val],
             #                                      [state.angular_velocity.z_val]]))
             
             # Apply rotation matrix to angular velocity
-            angularVelMatrix = np.dot(rotationMatrix, np.array([[state.angular_velocity.x_val],
+            # Page 21 - https://ethz.ch/content/dam/ethz/special-interest/mavt/robotics-n-intelligent-systems/rsl-dam/documents/RobotDynamics2016/RD2016script.pdf
+            angularVelMatrix = np.dot(rotationMatrix.T, np.array([[state.angular_velocity.x_val],
                                          [state.angular_velocity.y_val],
                                          [state.angular_velocity.z_val]]))
-            #R.from_euler(obj)
-            #Store the current state of multirotor in x
-            #e[2] = e[2] + np.pi if e[2]<=np.pi else e[2] - np.pi
+
             x = np.array([[position[0][0]],
                           [position[1][0]],
                           [position[2][0]],
@@ -187,19 +170,38 @@ class LQRtestPWM:
             
             K, u_bar = calK.gainMatrix(Ts,max_angular_vel, rotationMatrix)
             # Compute u
+            #print(u_bar)
             u = np.dot(K, x_bar-x) + u_bar
+            #print(u)
+            #Controller frame transformation
+            # Sabatino's orientation
+            # 0 - CW +ve y
+            # 1 - CCW +ve x
+            # 2 - CW -ve y
+            # 3 - CCW -ve x
             
-            #Controller frame transformation 
-            Q = np.array([[0.5, 0.0, 0.0, 0.5],
-                          [0, 0.5, 0.5, 0],
-                          [0.0, 0.5, 0.0, 0.5],
-                          [0.5, 0.0, 0.5, 0]])
+            #Airsim current orientation (after rotation):
+            # 0 - CCW +ve x
+            # 1 - CCW -ve x
+            # 2 - CW -ve y
+            # 3 - CW +ve y
+            Q = np.array([[0.0, 1.0, 0.0, 0.0],
+                          [0.0, 0.0, 0.0, 1.0],
+                          [0.0, 0.0, 1.0, 0.0],
+                          [1.0, 0.0, 0.0, 0.0]])
+            # Q = np.array([[0.5, 0.0, 0.0, 0.5],
+            #               [0.0, 0.5, 0.5, 0.0],
+            #               [0.5, 0.5, 0.0, 0.0],
+            #               [0.0, 0.0, 0.5, 0.5]])
+            
             # Q = np.array([[1.0, 0.0, 0.0, 0.0],
             #               [0, 1.0, 0.0, 0],
             #               [0.0, 0.0, 1.0, 0],
             #               [0, 0.0, 0.0, 1.0]])
             u_45 = np.dot(Q, u)
 
+            #u_45 = np.dot(la.inv(rotationMatrix),u_45)
+            
             sq_ctrl = [max(u_45[0][0], 0.0),
                        max(u_45[1][0], 0.0),
                        max(u_45[2][0], 0.0),
@@ -210,7 +212,7 @@ class LQRtestPWM:
             pwm2 = min(sq_ctrl[2]/(max_angular_vel**2),1.0)
             pwm3 = min(sq_ctrl[3]/(max_angular_vel**2),1.0)
            
-            multirotorClient.moveByMotorPWMsAsync(pwm0, pwm1, pwm2, pwm3,Ts).join()
+            multirotorClient.moveByMotorPWMsAsync(pwm0, pwm1, pwm2 , pwm3,Ts).join()
             #multirotorClient.moveToPositionAsync(x_bar[0], x_bar[1], x_bar[2], 0, 1200,
                         #airsim.DrivetrainType.MaxDegreeOfFreedom, airsim.YawMode(False,0), -1, 1).join()
 

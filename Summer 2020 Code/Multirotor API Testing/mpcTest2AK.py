@@ -16,10 +16,12 @@ multirotorClient = airsim.MultirotorClient()
 multirotorClient.confirmConnection()
 multirotorClient.enableApiControl(True)
 
-multirotorClient.moveToPositionAsync(x, y, z, velocity).join
+
 state = multirotorClient.getMultirotorState()
-multirotorClient.moveByMotorPWMsAsync(1, 1, 1, 1, 10).join()
-multirotorClient.moveByMotorPWMsAsync(0.5, 1, 0.5, 1, 5).join()
+print("Go up")
+multirotorClient.moveByMotorPWMsAsync(1, 1, 1, 1, 2).join()
+print("Spin")
+multirotorClient.moveByMotorPWMsAsync(0.5937, 0.5937, 0.5937, 0.5937, 20).join()
 #state = multirotorClient.getMultirotorState()
 # print(state.kinematics_estimated)
 # u_c = pickle.load( open( "control_inputs.p", "rb" ) )

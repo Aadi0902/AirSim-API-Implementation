@@ -28,7 +28,8 @@ f.write("\n\nRunning multirotor: \n")
 
 #Get current multirotor state
 state = client.getMultirotorState()
-print(state)
+VehicleClient = airsim.VehicleClient()
+
 pos = state.kinematics_estimated.position
 # print(state)
 startPosition = [pos.x_val, pos.y_val, pos.z_val]
@@ -64,7 +65,7 @@ while i<10:
     prevTime = state.timestamp
     i = i + 0.04
     #client.simPause(False)
-
+print(VehicleClient.getBarometerData())
     
 currentTime = state.timestamp
 print((currentTime-startTime)/1000000000)

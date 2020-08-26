@@ -8,7 +8,7 @@ import numpy as np
 import matrixmath
 from airsim import Vector3r
 import scipy
-import control
+from scipy import signal
 
 def gainMatrix(Ts = 0.1, max_angular_vel = 6393.667 * 2 * np.pi / 60, rotMatrix = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])):
 
@@ -26,10 +26,12 @@ def gainMatrix(Ts = 0.1, max_angular_vel = 6393.667 * 2 * np.pi / 60, rotMatrix 
     #cQ = 1.3/4
     cQ = 0.040164*(propeller_diameter**5)*air_density/(2*np.pi)
     g = 9.8
-    
+    maxThrust = 4.179446268
+    maxtTorque = 0.055562
     pwmHover = 0.5937
     sq_ctrl_hover = pwmHover * (max_angular_vel)**2
-    #cT = m*g/(4*sq_ctrl_hover)
+    cT = maxThrust/(max_angular_vel**2)
+    cQ = maxtTorque/(max_angular_vel**2)
     
     A = np.array([[0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
                   [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
@@ -61,7 +63,11 @@ def gainMatrix(Ts = 0.1, max_angular_vel = 6393.667 * 2 * np.pi / 60, rotMatrix 
     u_bar = np.dot(np.linalg.inv(Gamma),[[m*g],
                                          [0],
                                          [0],
-                                         [0]])           
+                                         [0]]) 
+    u_bar = np.array([[sq_ctrl_hover],
+                      [sq_ctrl_hover],
+                      [sq_ctrl_hover],
+                      [sq_ctrl_hover]])          
    
     Q = np.identity(12)
     R = np.identity(4)
