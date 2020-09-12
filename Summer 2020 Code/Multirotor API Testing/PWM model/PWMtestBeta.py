@@ -54,14 +54,15 @@ class LQRtestPWM:
         #Time step
         Ts = 0.1
         
-        # Maximum angular velocity
-        max_angular_vel = 6393.667  / 60
-        
+        # Maximum angular velocity convert to rad/s
+        max_angular_vel = 6393.667 * 2* np.pi / 60
+        max_thrust = 4.179446268;
+        k_const = 0.00036771704516278653
         dist_check = 5
         #Final state
-        x_bar = np.array([[0.0],
+        x_bar = np.array([[1.0],
                           [0.0],
-                          [-5.0],
+                          [4.0],
                           [0.0],
                           [0.0],
                           [0.0],
@@ -101,38 +102,35 @@ class LQRtestPWM:
         state = multirotorClient.getMultirotorState()
         pos = state.kinematics_estimated.position
         pos = np.array([pos.x_val,pos.y_val,pos.z_val])
-        while not_reached((x_bar[0],x_bar[1],x_bar[2]), pos, dist_check):
-
+        #while not_reached((x_bar[0],x_bar[1],x_bar[2]), pos, dist_check):
+        for ind in range(10000):
             # Get state of the multiorotor
             state = multirotorClient.getMultirotorState()
             state = state.kinematics_estimated
             
             #initialState = state.position
             
-            #Debugging point
-            pt = np.array([[0],
-                           [0],
-                           [1]])
+           
             # Define rotation matrix (check2nd row sign)
-            rotationMatrix = np.array([[1, 0, 0],
-                                       [0, 1, 0],
-                                       [0, 0, 1]])
-            Rx = np.array([[1, 0, 0],
-                           [0, np.cos(np.pi), -np.sin(np.pi)],
-                           [0, np.sin(np.pi), np.cos(np.pi)]])
-        
-            Rz = np.array([[np.cos(-np.pi/4), -np.sin(-np.pi/4), 0],
-                          [np.sin(-np.pi/4), np.cos(-np.pi/4), 0],
-                          [0, 0, 1]])
-            #Rotate 45 degrees in z
-            R1 = np.array([[ np.sqrt(2)/2, -np.sqrt(2)/2, 0],
-                           [ np.sqrt(2)/2,  np.sqrt(2)/2, 0],
-                           [            0,            0,  1]])
-            # Rotate 180 in x
-            R2 = np.array([[1, 0 , 0],
-                           [0, -1, 0],
-                           [0, 0, -1]])
-            rotationMatrix = np.dot(Rx, Rz)
+#            rotationMatrix = np.array([[1, 0, 0],
+#                                       [0, 1, 0],
+#                                       [0, 0, 1]])
+#            Rx = np.array([[1, 0, 0],
+#                           [0, np.cos(np.pi), -np.sin(np.pi)],
+#                           [0, np.sin(np.pi), np.cos(np.pi)]])
+#        
+#            Rz = np.array([[np.cos(-np.pi/4), -np.sin(-np.pi/4), 0],
+#                          [np.sin(-np.pi/4), np.cos(-np.pi/4), 0],
+#                          [0, 0, 1]])
+#            #Rotate 45 degrees in z
+#            R1 = np.array([[ np.sqrt(2)/2, -np.sqrt(2)/2, 0],
+#                           [ np.sqrt(2)/2,  np.sqrt(2)/2, 0],
+#                           [            0,            0,  1]])
+#            # Rotate 180 in x
+#            R2 = np.array([[1, 0 , 0],
+#                           [0, -1, 0],
+#                           [0, 0, -1]])
+#            rotationMatrix = np.dot(Rx, Rz)
             rotationMatrix = np.array([[1, 0, 0],
                                        [0, 1, 0],
                                        [0, 0, 1]])
@@ -144,13 +142,13 @@ class LQRtestPWM:
 
             #rotationMatrix = np.dot(R3, rotationMatrix)
             # Apply rotation to position
-            position = np.dot(rotationMatrix,np.array([[state.position.x_val], 
-                                                       [state.position.y_val], 
-                                                       [state.position.z_val]]))   
+            position = np.array([[state.position.x_val], 
+                                 [state.position.y_val], 
+                                 [state.position.z_val]])   
             # Apply rotation to linear velocity
-            linear_velocity =  np.dot(rotationMatrix,np.array([[state.linear_velocity.x_val], 
-                                                         [state.linear_velocity.y_val], 
-                                                               [state.linear_velocity.z_val]]))
+            linear_velocity =  np.array([[state.linear_velocity.x_val], 
+                                         [state.linear_velocity.y_val], 
+                                         [state.linear_velocity.z_val]])
             
             # Convert quaternion to rotation object
             q = R.from_quat([state.orientation.x_val,
@@ -169,9 +167,9 @@ class LQRtestPWM:
             
             # Apply rotation matrix to angular velocity
             # Page 21 - https://ethz.ch/content/dam/ethz/special-interest/mavt/robotics-n-intelligent-systems/rsl-dam/documents/RobotDynamics2016/RD2016script.pdf
-            angularVelMatrix = np.dot(rotationMatrix.T, np.array([[state.angular_velocity.x_val],
+            angularVelMatrix = np.array([[state.angular_velocity.x_val],
                                          [state.angular_velocity.y_val],
-                                         [state.angular_velocity.z_val]]))
+                                         [state.angular_velocity.z_val]])
 
             x = np.array([[position[0][0]],
                           [position[1][0]],
@@ -189,7 +187,9 @@ class LQRtestPWM:
             K, u_bar, Gamma = calK.gainMatrix(Ts,max_angular_vel, rotationMatrix)
             # Compute u
             #print(u_bar)
-            u_ang_vel = u_bar - np.dot(K, x - x_bar)
+            u_ang_vel = u_bar + np.dot(K, x_bar - x)
+            # thrust = (k_const * u_ang_vel)
+            # thrust = np.true_divide(thrust,(np.pi*2)**2)
             u_airsim = np.dot(Gamma,u_ang_vel)
             #print(u)
             #Controller frame transformation
@@ -221,33 +221,33 @@ class LQRtestPWM:
 
             #u_45 = np.dot(la.inv(rotationMatrix),u_45)
             
-            # sq_ctrl = [max(u_45[0][0], 0.0),
-            #            max(u_45[1][0], 0.0),
-            #            max(u_45[2][0], 0.0),
-            #            max(u_45[3][0], 0.0)] # max is just in case norm of sq_ctrl_delta is too large (can be negative)
+            sq_ctrl = [max(u_ang_vel[0][0], 0.0),
+                        max(u_ang_vel[1][0], 0.0),
+                        max(u_ang_vel[2][0], 0.0),
+                        max(u_ang_vel[3][0], 0.0)] # max is just in case norm of sq_ctrl_delta is too large (can be negative)
 
-            # pwm0 = min(sq_ctrl[0]/(max_angular_vel**2),1.0)
-            # pwm1 = min(sq_ctrl[1]/(max_angular_vel**2),1.0)
-            # pwm2 = min(sq_ctrl[2]/(max_angular_vel**2),1.0)
-            # pwm3 = min(sq_ctrl[3]/(max_angular_vel**2),1.0)
+            pwm0 = min(sq_ctrl[0]/max_angular_vel**2,1.0)
+            pwm1 = min(sq_ctrl[1]/max_angular_vel**2,1.0)
+            pwm2 = min(sq_ctrl[2]/max_angular_vel**2,1.0)
+            pwm3 = min(sq_ctrl[3]/max_angular_vel**2,1.0)
            
-            # multirotorClient.moveByMotorPWMsAsync(pwm0, pwm1, pwm2 , pwm3,Ts).join()
+            multirotorClient.moveByMotorPWMsAsync(pwm0, pwm1, pwm2 , pwm3,Ts).join()
             #multirotorClient.moveToPositionAsync(x_bar[0], x_bar[1], x_bar[2], 0, 1200,
                         #airsim.DrivetrainType.MaxDegreeOfFreedom, airsim.YawMode(False,0), -1, 1).join()
 
             #multirotorClient.moveByMotorPWMsAsync(pwmHover, pwmHover, pwmHover, pwmHover, Ts).join()
-            u_airsim[0] = (0.59375/9.81)*u_airsim[0]
-            bound_control(u_airsim, 5, 5, 5)
-            rotmat_u = np.array([[1,0,0],[0,-1,0],[0,0,-1]])
-            u_airsim[1:4] = rotmat_u @ u_airsim[1:4]
-            u_airsim = np.squeeze(u_airsim)
-            #if u_airsim[1] >5 or u_airsim[2] >5 or u_airsim[3] >5 or u_airsim[0]>1:
-            
-            multirotorClient.moveByAngleRatesThrottleAsync(u_airsim[1],
-                                                           u_airsim[2],
-                                                           u_airsim[3],
-                                                           u_airsim[0],
-                                                           Ts).join()
+#            u_airsim[0] = (0.59375/9.81)*u_airsim[0]
+#            bound_control(u_airsim, 5, 5, 5)
+#            rotmat_u = np.array([[1,0,0],[0,-1,0],[0,0,-1]])
+#            u_airsim[1:4] = rotmat_u @ u_airsim[1:4]
+#            u_airsim = np.squeeze(u_airsim)
+#            #if u_airsim[1] >5 or u_airsim[2] >5 or u_airsim[3] >5 or u_airsim[0]>1:
+#            
+#            multirotorClient.moveByAngleRatesThrottleAsync(u_airsim[1],
+#                                                           u_airsim[2],
+#                                                           u_airsim[3],
+#                                                           u_airsim[0],
+#                                                           Ts).join()
             state = multirotorClient.getMultirotorState()
             pos = state.kinematics_estimated.position
             pos = np.array([pos.x_val,pos.y_val,pos.z_val])
