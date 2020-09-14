@@ -10,7 +10,7 @@ from airsim import Vector3r
 import scipy
 from scipy import signal
 
-def gainMatrix(Ts = 0.1, max_angular_vel = 6393.667 * 2* np.pi/ 60, rotMatrix = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])):
+def gainMatrix(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60, rotMatrix = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])):
 
     m = 1 # Mass
     inertia_mat = np.dot(rotMatrix, np.array([[0.00234817178, 0, 0],
@@ -18,7 +18,7 @@ def gainMatrix(Ts = 0.1, max_angular_vel = 6393.667 * 2* np.pi/ 60, rotMatrix = 
                             [0,0,0.00573909376]]))
 
     #I = Vector3r(inertia_mat[0,0],inertia_mat[1,1],inertia_mat[2,2])
-    I = Vector3r(1,1,1)
+    #I = Vector3r(1,1,1)
     d = 0.2275 # Center to rotor distance
     cT = 0.109919
     air_density = 1.225
@@ -30,7 +30,9 @@ def gainMatrix(Ts = 0.1, max_angular_vel = 6393.667 * 2* np.pi/ 60, rotMatrix = 
     maxThrust = 4.179446268
     maxtTorque = 0.055562
     pwmHover = 0.59375
-    sq_ctrl_hover = pwmHover * (max_angular_vel)**2
+    kConst = 0.000367717
+    #sq_ctrl_hover = pwmHover*maxThrust
+    sq_ctrl_hover = pwmHover * (maxThrust/kConst)*((2*np.pi)**2)
     #k_const = air_density * ((propeller_diameter)**4) * 0.109919
     #cT = maxThrust/(max_angular_vel**2)
     #cQ = maxtTorque/(max_angular_vel**2)

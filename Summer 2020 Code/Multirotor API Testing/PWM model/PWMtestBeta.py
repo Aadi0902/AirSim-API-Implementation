@@ -54,8 +54,8 @@ class LQRtestPWM:
         #Time step
         Ts = 0.1
         
-        # Maximum angular velocity convert to rad/s
-        max_angular_vel = 6393.667 * 2* np.pi / 60
+        # Maximum angular velocity convert to rps
+        max_angular_vel = 6396.667  / 60
         max_thrust = 4.179446268;
         k_const = 0.00036771704516278653
         dist_check = 5
@@ -225,13 +225,17 @@ class LQRtestPWM:
                         max(u_ang_vel[1][0], 0.0),
                         max(u_ang_vel[2][0], 0.0),
                         max(u_ang_vel[3][0], 0.0)] # max is just in case norm of sq_ctrl_delta is too large (can be negative)
-
-            pwm0 = min(sq_ctrl[0]/max_angular_vel**2,1.0)
-            pwm1 = min(sq_ctrl[1]/max_angular_vel**2,1.0)
-            pwm2 = min(sq_ctrl[2]/max_angular_vel**2,1.0)
-            pwm3 = min(sq_ctrl[3]/max_angular_vel**2,1.0)
+            # Convert rad/s^2 to (rps)^2 
+            sq_ctrl = sq_ctrl/((2*np.pi)**2)
+            pwm = (sq_ctrl*k_const)/max_thrust
+            zer = [1,1,1,1]
+            pwm = min(pwm,zer)
+#            pwm0 = min(sq_ctrl[0]/max_angular_vel**2,1.0)
+#            pwm1 = min(sq_ctrl[1]/max_angular_vel**2,1.0)
+#            pwm2 = min(sq_ctrl[2]/max_angular_vel**2,1.0)
+#            pwm3 = min(sq_ctrl[3]/max_angular_vel**2,1.0)
            
-            multirotorClient.moveByMotorPWMsAsync(pwm0, pwm1, pwm2 , pwm3,Ts).join()
+            multirotorClient.moveByMotorPWMsAsync(pwm[0], pwm[1], pwm[2] , pwm[3],Ts).join()
             #multirotorClient.moveToPositionAsync(x_bar[0], x_bar[1], x_bar[2], 0, 1200,
                         #airsim.DrivetrainType.MaxDegreeOfFreedom, airsim.YawMode(False,0), -1, 1).join()
 
