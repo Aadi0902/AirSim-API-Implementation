@@ -66,7 +66,7 @@ def GetRotationMatrix(axis_flag, angle):
 
 def gain_matrix_calculator(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60, rotMatrix = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])):
 
-    mass               = 1                                                     # Mass
+    mass               = 1                                                      # Mass
     I                  = np.diag([0.00234817178, 0.00366767193, 0.00573909376]) # Inertial Matrix
     d                  = 0.2275                                                 # Center to rotor distance
     cT                 = 0.109919                                               # Torque coefficient
@@ -154,7 +154,7 @@ def main():
     ###################### Problem Definition Start ###########################
     ###########################################################################
 
-    Ts              = 0.01                       # Simulation Time Step    
+    Ts              = 0.1                      # Simulation Time Step    
     max_angular_vel = 6396.667 * 2 * np.pi / 60 # Maximum angular velocity
     goal_error      = 0.1                       # Error to goal tolerance  
     k_const         = 0.000367717               # Thrust = kConst * w^2
@@ -163,9 +163,9 @@ def main():
     mass            = 1.0                       # Mass
     
     # Specify the goal state to be reached
-    x_goal = np.array([[1.0],
+    x_goal = np.array([[0.0],
                        [0.0],
-                       [0.0],
+                       [100.0],
                        [0.0],
                        [0.0],
                        [0.0],
@@ -202,10 +202,8 @@ def main():
     # Infer the drone position
     pos = state.kinematics_estimated.position
     pos = np.array([pos.x_val,pos.y_val,pos.z_val])    
-    
     # Run the loop until goal is reached
     while not_reached((x_goal[0,0],x_goal[1,0],x_goal[2,0]), pos, goal_error):
-
         # Get state of the multirotor
         state = multirotorClient.getMultirotorState()
         state = state.kinematics_estimated
