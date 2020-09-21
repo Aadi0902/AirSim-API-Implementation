@@ -12,6 +12,7 @@ G"""
 ##############################################################################
 
 import numpy as np
+import csv
 import airsim
 import time
 from scipy import signal
@@ -64,9 +65,9 @@ def GetRotationMatrix(axis_flag, angle):
 ##############################################################################
 ##############################################################################    
 
-def gain_matrix_calculator(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60, rotMatrix = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])):
+def gain_matrix_calculator(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
 
-    mass               = 1                                                      # Mass
+    mass               = 1 - 0.055*4                                            # Mass
     I                  = np.diag([0.00234817178, 0.00366767193, 0.00573909376]) # Inertial Matrix
     d                  = 0.2275                                                 # Center to rotor distance
     cT                 = 0.109919                                               # Torque coefficient
@@ -154,18 +155,18 @@ def main():
     ###################### Problem Definition Start ###########################
     ###########################################################################
 
-    Ts              = 0.1                      # Simulation Time Step    
+    Ts              = 0.001                     # Simulation Time Step    
     max_angular_vel = 6396.667 * 2 * np.pi / 60 # Maximum angular velocity
-    goal_error      = 0.1                       # Error to goal tolerance  
+    goal_error      = 0.5                       # Error to goal tolerance  
     k_const         = 0.000367717               # Thrust = kConst * w^2
     max_thrust      = 4.179446268               # Maximum thrust
     g               = 9.81                      # Gravity  
     mass            = 1.0                       # Mass
     
     # Specify the goal state to be reached
-    x_goal = np.array([[0.0],
-                       [0.0],
-                       [100.0],
+    x_goal = np.array([[-5.0],
+                       [2.0],
+                       [-5.0],
                        [0.0],
                        [0.0],
                        [0.0],
@@ -191,7 +192,7 @@ def main():
     print("arming the drone...")
     multirotorClient.armDisarm(True)
     
-    # Take off
+    # Take off commented
     if state.landed_state == airsim.LandedState.Landed:
         print("taking off...")
         multirotorClient.takeoffAsync().join()
@@ -201,7 +202,32 @@ def main():
     
     # Infer the drone position
     pos = state.kinematics_estimated.position
-    pos = np.array([pos.x_val,pos.y_val,pos.z_val])    
+    pos = np.array([pos.x_val,pos.y_val,pos.z_val])
+    print(pos)    
+    time.sleep(1)
+    
+    # Create new file for soring values
+    file = open('Expt1.csv', 'w+', newline ='') 
+    
+    # Store current state
+    totalTS = 0
+    storeTS = np.empty((1,0))
+    storeState = np.empty((12,0))
+    storeGoal = np.empty((12,0))
+    storeError = np.empty((12,0))
+    storeUAngVel = np.empty((4,0))
+    storeUBar = np.empty((4,0))
+    storeK = np.empty((4,0))
+    storePWM = np.empty((4,0))
+    
+    environ              = multirotorClient.simGetGroundTruthEnvironment()
+    standard_air_density = 1.225
+    air_density_ratio    = environ.air_density/standard_air_density
+    # print('Air Density Ratio', air_density_ratio)
+    
+    # Get the LQR gain matrix
+    K, u_bar, Gamma = gain_matrix_calculator(Ts, max_angular_vel)
+    print(K)
     # Run the loop until goal is reached
     while not_reached((x_goal[0,0],x_goal[1,0],x_goal[2,0]), pos, goal_error):
         # Get state of the multirotor
@@ -264,14 +290,12 @@ def main():
                       [angularVelMatrix[1,0]],
                       [angularVelMatrix[2,0]]])
         
-        
         # Define the error to goal
         error = x - x_goal
         
-        print('error=', error)
+        # print('error=', error)
         
-        # Get the LQR gain matrix
-        K, u_bar, Gamma = gain_matrix_calculator(Ts, max_angular_vel, rotationMatrix)
+
         
         # Compute the desired control inputs - [w1^2 w2^2 w3^2 w4^2] 
         u_ang_vel = np.dot(K, error)        
@@ -281,44 +305,41 @@ def main():
         
         ##############################################################################
         ###########################  PWM CONTROL  ####################################
-        if control_mode == 1:
             
-            # Add the gravity compensation component to all the control inputs
-            u_ang_vel += u_bar       
-            
-            # Remove negative values
-            for kk in range(u_ang_vel.shape[0]):
-                if u_ang_vel[kk] < 0:
-                    u_ang_vel[kk] = 0.0
-            
-            # Convert u_ang_vel in rad/s^2 to sq_ctrl in (rps)^2 
-            #sq_ctrl = u_ang_vel/((2*np.pi)**2)
-            
-            # Compute the required PWM control inputs for the for rotors
-            pwm = u_ang_vel/(max_angular_vel**2)     
-            
-            for kk in range(pwm.shape[0]):
-                if pwm[kk] > 1:
-                    pwm[kk] = 1
-            
-            # Apply the PWM to Airsim
-            multirotorClient.moveByMotorPWMsAsync(pwm[0,0], pwm[1,0], pwm[2,0], pwm[3,0], Ts).join()
+        # Add the gravity compensation component to all the control inputs
+        u_ang_vel += u_bar       
         
-        ##############################################################################
-        ###########################  FORCE-TORQUE CONTROL  ###########################
-        if control_mode == 2:
-            
-            u_airsim = Gamma @ u_ang_vel
-            u_airsim += np.array([[mass*g],
-                                  [0],
-                                  [0],
-                                  [0]])
-            
-            multirotorClient.moveByAngleRatesThrottleAsync(u_airsim[1,0],
-                                                           u_airsim[2,0],
-                                                           u_airsim[3,0],
-                                                           u_airsim[0,0],
-                                                           Ts).join()
+        # Remove negative values
+        for kk in range(u_ang_vel.shape[0]):
+            if u_ang_vel[kk] < 0:
+                u_ang_vel[kk] = 0.0
+        
+        # Convert u_ang_vel in rad/s^2 to sq_ctrl in (rps)^2 
+        #sq_ctrl = u_ang_vel/((2*np.pi)**2)
+        
+        # Compute the required PWM control inputs for the for rotors
+        pwm = u_ang_vel/(max_angular_vel**2)     
+        
+        pwm = pwm/air_density_ratio
+        
+        for kk in range(pwm.shape[0]):
+            if pwm[kk] > 1:
+                pwm[kk] = 1
+        print(pwm)
+        # Apply the PWM to Airsim
+        multirotorClient.moveByMotorPWMsAsync(pwm[0,0], pwm[1,0], pwm[2,0], pwm[3,0], Ts).join()
+        
+        # CSV code
+        totalTS = totalTS + Ts
+        
+        storeTS = np.append(storeTS,np.array([[totalTS]]),axis=1)
+        storeState = np.append(storeState,x,axis=1)
+        storeGoal = np.append(storeGoal,x_goal,axis=1)
+        storeError = np.append(storeError,error,axis=1)
+        storeUAngVel = np.append(storeUAngVel,u_ang_vel,axis=1)
+        storeUBar = np.append(storeUBar,u_bar,axis=1)
+        storeK = np.append(storeK,K,axis=1)
+        storePWM = np.append(storePWM,pwm,axis=1)
         
         # Infer the state after applying the control
         state = multirotorClient.getMultirotorState()
