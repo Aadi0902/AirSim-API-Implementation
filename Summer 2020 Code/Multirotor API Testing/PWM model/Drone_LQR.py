@@ -151,17 +151,17 @@ def main():
     ###################### Problem Definition Start ###########################
     ###########################################################################
 
-    Ts              = 0.001               # Simulation Time Step    
+    Ts              = 0.001              # Simulation Time Step    
     max_angular_vel = 6396.667*2*np.pi/60 # Maximum angular velocity
-    goal_error      = 0.5                 # Distance tolerance to the goal
+    goal_error      = 0.3                 # Distance tolerance to the goal
     k_const         = 0.000367717         # Thrust = kConst * w^2
     max_thrust      = 4.179446268         # Maximum thrust
     g               = 9.81                # Gravity  
     mass            = 1.0                 # Mass
     
     # Specify the goal state to be reached
-    x_goal = np.array([[-5.0],
-                       [5.0],
+    x_goal = np.array([[-1.0],
+                       [-10.0],
                        [-5.0],
                        [0.0],
                        [0.0],
@@ -235,6 +235,9 @@ def main():
             
             # Land Smoothly    
             print("Reached Goal - Landing smoothly")
+            
+            multirotorClient.hoverAsync().join()
+            time.sleep(1)
             multirotorClient.landAsync().join()
             
             print("Drone disarmed")    
