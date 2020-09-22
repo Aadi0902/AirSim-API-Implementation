@@ -15,10 +15,12 @@ import numpy as np
 import csv
 import airsim
 import time
-from scipy import signal
+import matplotlib.pyplot as plt
 import matrixmath
+from scipy import signal
 from numpy import linalg as la
 from scipy.spatial.transform import Rotation as scipy_rotation
+
 
 ##############################################################################
 ##############################################################################
@@ -34,8 +36,8 @@ def bound_control(u, max_abs_roll_rate, max_abs_pitch_rate, max_abs_yaw_rate):
 ##############################################################################
 ##############################################################################
 
-def not_reached(pt1, pt2, dist):
-    if np.linalg.norm(pt1[0:3] - pt2[0:3]) > dist:
+def CheckGoalReach(pt1, pt2, dist):
+    if np.linalg.norm(pt1[0:3] - pt2[0:3]) <= dist:
         return True
     else:
         return False
@@ -67,11 +69,11 @@ def GetRotationMatrix(axis_flag, angle):
 
 def gain_matrix_calculator(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
 
-    mass               = 1 - 0.055*4                                            # Mass
+    mass               = 1 - 0.055*4                                            # Mass of the quadrotor
     I                  = np.diag([0.00234817178, 0.00366767193, 0.00573909376]) # Inertial Matrix
     d                  = 0.2275                                                 # Center to rotor distance
     cT                 = 0.109919                                               # Torque coefficient
-    cQ                 = 0.040164
+    cQ                 = 0.040164                                               # Drag coefficient
     air_density        = 1.225                                                  # Air density
     propeller_diameter = 0.2286                                                 # Propeller Diameter
     cT                 = cT*air_density*(propeller_diameter**4)*((2*np.pi)**2)  # Thrust coefficient
@@ -82,12 +84,6 @@ def gain_matrix_calculator(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
     pwmHover           = 0.59375                                                # PWM hover constant
     kConst             = 0.000367717                                            # Thrust = kConst * w^2
     sq_ctrl_hover      = pwmHover*(max_angular_vel**2)                          # sq_ctrl_hover
-    
-    # Commented out codes
-    #sq_ctrl_hover = pwmHover*maxThrust
-    #k_const = air_density * ((propeller_diameter)**4) * 0.109919
-    #cT = maxThrust/(max_angular_vel**2)
-    #cQ = maxtTorque/(max_angular_vel**2)
     
     # System dynamics matrix: states order [x y z phi theta psi u v w p q r]
     A = np.array([[0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
@@ -155,17 +151,17 @@ def main():
     ###################### Problem Definition Start ###########################
     ###########################################################################
 
-    Ts              = 0.001                     # Simulation Time Step    
-    max_angular_vel = 6396.667 * 2 * np.pi / 60 # Maximum angular velocity
-    goal_error      = 0.5                       # Error to goal tolerance  
-    k_const         = 0.000367717               # Thrust = kConst * w^2
-    max_thrust      = 4.179446268               # Maximum thrust
-    g               = 9.81                      # Gravity  
-    mass            = 1.0                       # Mass
+    Ts              = 0.001               # Simulation Time Step    
+    max_angular_vel = 6396.667*2*np.pi/60 # Maximum angular velocity
+    goal_error      = 0.5                 # Distance tolerance to the goal
+    k_const         = 0.000367717         # Thrust = kConst * w^2
+    max_thrust      = 4.179446268         # Maximum thrust
+    g               = 9.81                # Gravity  
+    mass            = 1.0                 # Mass
     
     # Specify the goal state to be reached
     x_goal = np.array([[-5.0],
-                       [2.0],
+                       [5.0],
                        [-5.0],
                        [0.0],
                        [0.0],
@@ -186,15 +182,14 @@ def main():
     
     # Get the drone state
     state = multirotorClient.getMultirotorState()
-    print(state.kinematics_estimated.position)
     
     # Arm the drone
-    print("arming the drone...")
+    print("Arming the drone...")
     multirotorClient.armDisarm(True)
     
     # Take off commented
     if state.landed_state == airsim.LandedState.Landed:
-        print("taking off...")
+        print("Taking off...")
         multirotorClient.takeoffAsync().join()
     else:
         multirotorClient.hoverAsync().join()            
@@ -202,34 +197,55 @@ def main():
     
     # Infer the drone position
     pos = state.kinematics_estimated.position
-    pos = np.array([pos.x_val,pos.y_val,pos.z_val])
-    print(pos)    
-    time.sleep(1)
+    pos = np.round_(np.array([pos.x_val,pos.y_val,pos.z_val]), 2)
+    print('Drone Start Positions: x =', pos[0], 'y =', pos[1], 'z =', pos[2]) 
     
     # Create new file for soring values
     file = open('Expt1.csv', 'w+', newline ='') 
     
     # Store current state
-    totalTS = 0
-    storeTS = np.empty((1,0))
-    storeState = np.empty((12,0))
-    storeGoal = np.empty((12,0))
-    storeError = np.empty((12,0))
+    totalTS      = 0
+    storeTS      = np.empty((1,0))
+    storeState   = np.empty((12,0))
+    storeGoal    = np.empty((12,0))
+    storeError   = np.empty((12,0))
     storeUAngVel = np.empty((4,0))
-    storeUBar = np.empty((4,0))
-    storeK = np.empty((4,0))
-    storePWM = np.empty((4,0))
+    storeUBar    = np.empty((4,0))
+    storeK       = np.empty((4,0))
+    storePWM     = np.empty((4,0))
     
-    environ              = multirotorClient.simGetGroundTruthEnvironment()
+    # Store the history of states
+    pos_x_hist = [pos[0]]
+    pos_y_hist = [pos[1]]
+    pos_z_hist = [pos[2]]
+    
+    # Get the environmental air density
+    environ_air_sensity  = multirotorClient.simGetGroundTruthEnvironment().air_density
     standard_air_density = 1.225
-    air_density_ratio    = environ.air_density/standard_air_density
-    # print('Air Density Ratio', air_density_ratio)
+    air_density_ratio    = environ_air_sensity/standard_air_density
     
     # Get the LQR gain matrix
     K, u_bar, Gamma = gain_matrix_calculator(Ts, max_angular_vel)
-    print(K)
+    
     # Run the loop until goal is reached
-    while not_reached((x_goal[0,0],x_goal[1,0],x_goal[2,0]), pos, goal_error):
+    while True:
+        
+        # Check if goal is reached, if yes - stop
+        if CheckGoalReach((x_goal[0,0],x_goal[1,0],x_goal[2,0]), pos, goal_error):
+            
+            # Land Smoothly    
+            print("Reached Goal - Landing smoothly")
+            multirotorClient.landAsync().join()
+            
+            print("Drone disarmed")    
+            multirotorClient.armDisarm(False)
+                
+            multirotorClient.enableApiControl(False)
+            print("Simulation STOP.")
+            
+            # Break the Simulation Loop
+            break
+        
         # Get state of the multirotor
         state = multirotorClient.getMultirotorState()
         state = state.kinematics_estimated
@@ -291,18 +307,12 @@ def main():
                       [angularVelMatrix[2,0]]])
         
         # Define the error to goal
-        error = x - x_goal
-        
+        error = x - x_goal        
         # print('error=', error)
-        
-
         
         # Compute the desired control inputs - [w1^2 w2^2 w3^2 w4^2] 
         u_ang_vel = np.dot(K, error)        
-        
-        # Set the control code - 1: PWM Mode, 2: Force-Torque mode
-        control_mode = 1
-        
+                
         ##############################################################################
         ###########################  PWM CONTROL  ####################################
             
@@ -310,63 +320,64 @@ def main():
         u_ang_vel += u_bar       
         
         # Remove negative values
-        for kk in range(u_ang_vel.shape[0]):
-            if u_ang_vel[kk] < 0:
-                u_ang_vel[kk] = 0.0
+        # for kk in range(u_ang_vel.shape[0]):
+        #     if u_ang_vel[kk] < 0:
+        #         u_ang_vel[kk] = 0.0
         
         # Convert u_ang_vel in rad/s^2 to sq_ctrl in (rps)^2 
-        #sq_ctrl = u_ang_vel/((2*np.pi)**2)
+        # u_ang_vel = u_ang_vel/((2*np.pi)**2)
         
-        # Compute the required PWM control inputs for the for rotors
-        pwm = u_ang_vel/(max_angular_vel**2)     
-        
-        pwm = pwm/air_density_ratio
+        # Compute the required PWM control inputs for the four rotors
+        pwm = u_ang_vel/(air_density_ratio*max_angular_vel**2)     
         
         for kk in range(pwm.shape[0]):
             if pwm[kk] > 1:
-                pwm[kk] = 1
-        print(pwm)
+                pwm[kk] = 1        
+
         # Apply the PWM to Airsim
         multirotorClient.moveByMotorPWMsAsync(pwm[0,0], pwm[1,0], pwm[2,0], pwm[3,0], Ts).join()
         
         # CSV code
-        totalTS = totalTS + Ts
-        
-        storeTS = np.append(storeTS,np.array([[totalTS]]),axis=1)
-        storeState = np.append(storeState,x,axis=1)
-        storeGoal = np.append(storeGoal,x_goal,axis=1)
-        storeError = np.append(storeError,error,axis=1)
+        totalTS      = totalTS + Ts        
+        storeTS      = np.append(storeTS,np.array([[totalTS]]),axis=1)
+        storeState   = np.append(storeState,x,axis=1)
+        storeGoal    = np.append(storeGoal,x_goal,axis=1)
+        storeError   = np.append(storeError,error,axis=1)
         storeUAngVel = np.append(storeUAngVel,u_ang_vel,axis=1)
-        storeUBar = np.append(storeUBar,u_bar,axis=1)
-        storeK = np.append(storeK,K,axis=1)
-        storePWM = np.append(storePWM,pwm,axis=1)
+        storeUBar    = np.append(storeUBar,u_bar,axis=1)
+        storeK       = np.append(storeK,K,axis=1)
+        storePWM     = np.append(storePWM,pwm,axis=1)
         
         # Infer the state after applying the control
         state = multirotorClient.getMultirotorState()
         pos   = state.kinematics_estimated.position
-        pos   = np.array([pos.x_val,pos.y_val,pos.z_val])
-        print('Drone Position =', multirotorClient.getMultirotorState().kinematics_estimated.position)
+        pos   = np.round_(np.array([pos.x_val,pos.y_val,pos.z_val]), 2)
+        print('Drone Positions: x =', pos[0], 'y =', pos[1], 'z =', pos[2])
         
-        # Commented Codes
-        # sq_ctrl = [max(u_45[0][0], 0.0),
-        #            max(u_45[1][0], 0.0),
-        #            max(u_45[2][0], 0.0),
-        #            max(u_45[3][0], 0.0)] # max is just in case norm of sq_ctrl_delta is too large (can be negative)
+        # Store the drone position history
+        pos_x_hist.append(pos[0])
+        pos_y_hist.append(pos[1])
+        pos_z_hist.append(pos[2])
+    
 
-        # pwm0 = min(sq_ctrl[0]/(max_angular_vel**2),1.0)
-        # pwm1 = min(sq_ctrl[1]/(max_angular_vel**2),1.0)
-        # pwm2 = min(sq_ctrl[2]/(max_angular_vel**2),1.0)
-        # pwm3 = min(sq_ctrl[3]/(max_angular_vel**2),1.0)
-       
-        # multirotorClient.moveByMotorPWMsAsync(pwm0, pwm1, pwm2 , pwm3,Ts).join()
+    # Prepare for plotting
+    pos_z_hist  = [-x for x in pos_z_hist]
+    goal_x_hist = [x_goal[0,0]]*len(pos_x_hist)  
+    goal_y_hist = [x_goal[1,0]]*len(pos_y_hist)
+    goal_z_hist = [-x_goal[2,0]]*len(pos_z_hist)
     
-    time.sleep(5)
-    
-    print("disarming...")
-    multirotorClient.armDisarm(False)
-        
-    multirotorClient.enableApiControl(False)
-    print("Simulation STOP.")
+    # Plot the history of states
+    tme = np.arange(0,totalTS, Ts).tolist()
+    ax1 = plt.subplot(311)    
+    ax2 = plt.subplot(312, sharex=ax1)
+    ax3 = plt.subplot(313, sharex=ax1)
+    ax1.plot(tme, pos_x_hist)        
+    ax2.plot(tme, pos_y_hist)        
+    ax3.plot(tme, pos_z_hist)
+    ax1.plot(tme, goal_x_hist)
+    ax2.plot(tme, goal_y_hist)
+    ax3.plot(tme, goal_z_hist)
+    plt.show()
 
 ##############################################################################
 ##############################################################################
