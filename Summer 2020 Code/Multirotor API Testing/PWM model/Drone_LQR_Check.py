@@ -15,6 +15,7 @@ import numpy as np
 import csv
 import airsim
 import time
+import math
 import matplotlib.pyplot as plt
 import matrixmath
 from scipy import signal
@@ -71,7 +72,7 @@ def gain_matrix_calculator(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
 
     mass               = 1 - 0.055*4                                            # Mass of the quadrotor
     I                  = np.diag([0.00234817178, 0.00366767193, 0.00573909376]) # Inertial Matrix
-    d                  = 0.2275                                                 # Center to rotor distance
+    d                  = 0.2275/math.sqrt(2)                                    # Center to rotor distance
     cT                 = 0.109919                                               # Torque coefficient
     cQ                 = 0.040164                                               # Drag coefficient
     air_density        = 1.225                                                  # Air density
@@ -92,8 +93,8 @@ def gain_matrix_calculator(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
                   [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
                   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
                   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                  [0, 0, 0, 0,-g, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, g, 0, 0, 0, 0, 0, 0, 0, 0],
+                  [0, 0, 0, 0, g, 0, 0, 0, 0, 0, 0, 0],
+                  [0, 0, 0, -g, 0, 0, 0, 0, 0, 0, 0, 0],
                   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -105,14 +106,16 @@ def gain_matrix_calculator(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
                       [ d*cT, -d*cT,  d*cT, -d*cT],
                       [  cQ,   cQ,    -cQ,   -cQ]])
     
-    # Control Input matrix
+    # Gamma = np.array([[  cT,   cT,   cT,   cT],
+    #                   [ -d*cT,  d*cT, d*cT, -d*cT],
+    #                   [ -d*cT, d*cT,  -d*cT, d*cT],
+    #                   [  -cQ,   -cQ,   cQ,   cQ]])
+    
+    # Control Input matrix [F tx ty tz]
     B = np.array([[0,   0,   0,   0,   0,   0,   0,   0,  1/mass,   0 ,   0 ,     0],
                   [0,   0,   0,   0,   0,   0,   0,   0,   0 , 1/I[0,0],   0 ,     0],
                   [0,   0,   0,   0,   0,   0,   0,   0,   0 ,   0 , 1/I[1,1],     0],
-                  [0,   0,   0,   0,   0,   0,   0,   0,   0 ,   0 ,   0 ,   1/I[2,2]]]) 
-    
-    # Change B matrix to have [w1^2 w2^2 w3^2 w4^2] as control inputs
-    B = B.T @ Gamma
+                  [0,   0,   0,   0,   0,   0,   0,   0,   0 ,   0 ,   0 ,   1/I[2,2]]]).T 
     
     # Define the output matrices
     C = np.identity(12)
@@ -161,7 +164,7 @@ def main():
     
     # Specify the goal state to be reached
     x_goal = np.array([[-1.0],
-                       [-10.0],
+                       [-5.0],
                        [-5.0],
                        [0.0],
                        [0.0],
@@ -200,8 +203,8 @@ def main():
     pos = np.round_(np.array([pos.x_val,pos.y_val,pos.z_val]), 2)
     print('Drone Start Positions: x =', pos[0], 'y =', pos[1], 'z =', pos[2]) 
     
-    # Create new file for soring values
-    file = open('Expt1.csv', 'w+', newline ='') 
+    # # Create new file for soring values
+    # file = open('Expt1.csv', 'w+', newline ='') 
     
     # Store current state
     totalTS      = 0
@@ -313,8 +316,12 @@ def main():
         error = x - x_goal        
         # print('error=', error)
         
+        # Infer desired control input u = [F tx ty tz] = K*e
+        u_force_torque = np.dot(K, error)   
+        
         # Compute the desired control inputs - [w1^2 w2^2 w3^2 w4^2] 
-        u_ang_vel = np.dot(K, error)        
+        u_ang_vel = la.inv(Gamma) @ u_force_torque
+        
                 
         ##############################################################################
         ###########################  PWM CONTROL  ####################################
@@ -323,12 +330,11 @@ def main():
         u_ang_vel += u_bar       
         
         # Remove negative values
-        # for kk in range(u_ang_vel.shape[0]):
-        #     if u_ang_vel[kk] < 0:
-        #         u_ang_vel[kk] = 0.0
-        
-        # Convert u_ang_vel in rad/s^2 to sq_ctrl in (rps)^2 
-        # u_ang_vel = u_ang_vel/((2*np.pi)**2)
+        for kk in range(u_ang_vel.shape[0]):
+            if u_ang_vel[kk] < 0:
+                u_ang_vel[kk] = 0.0
+            if u_ang_vel[kk] > max_angular_vel**2:
+                u_ang_vel[kk] = max_angular_vel**2
         
         # Compute the required PWM control inputs for the four rotors
         pwm = u_ang_vel/(air_density_ratio*max_angular_vel**2)     
