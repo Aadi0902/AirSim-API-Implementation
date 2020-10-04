@@ -65,24 +65,76 @@ def GetRotationMatrix(axis_flag, angle):
 ##############################################################################
 ##############################################################################    
 
+# System parameters
+pwmHover            = 0.59375                                                # PWM hover constant
+max_rpm             = 6396.667
+n_motor             = 4                                                                    #Number of motors
+l                   = 0.2275                                                   # Arm length [m]
+l_arm_x             = l*np.sqrt(2)/2 #Arm length in X axis [m]
+l_arm_y             = l*np.sqrt(2)/2 #Arm length in Y axis [m]
+l_arm_z             = 0.025 #Arm length in Z axis [m]
+l_box_x             = 0.18 #Central body length in X axis [m]
+l_box_y             = 0.11 #Central body length in Y axis [m]
+l_box_z             = 0.04 #Central body length in Z axis [m]
+l_feet              = 0.1393 # Feet length in Z axis [m]
+Diam                = 0.2286 #Rotor diameter [m]
+Rad                 = Diam/2 #Rotor radius [m]
+
+# Mass Parameters
+m                   = 1# Mass [kg]
+m_motor             = 0.055# Motor mass [kg]
+m_box               = m-n_motor*m_motor # Central body mass [kg]
+g                   = 9.8 # Gravity [m/s**2]
+Ixx                 = m_box/12*(l_box_y**2+l_box_z**2)+(l_arm_y**2+l_arm_z**2)*m_motor*n_motor
+# Inertia in X axis [kg m**2]
+Iyy                 = m_box/12*(l_box_x**2+l_box_z**2)+(l_arm_x**2+l_arm_z**2)*m_motor*n_motor
+# Inertia in Y axis [kg m**2]
+Izz                 = m_box/12*(l_box_x**2+l_box_y**2)+(l_arm_x**2+l_arm_y**2)*m_motor*n_motor
+# Inertia in Z axis [kg m**2]
+Ir                  = 2.03e-5; # Rotor inertia around spinning axis [kg m**2]
+
+# Motor Parameters
+max_rpm             = 6396.667 # Rotor max RPM
+
+max_omega           = max_rpm/RADS2RPM #Rotor max angular velocity [rad/s]
+Tm                  = 0.005 # Motor low pass filter
+
+# Aerodynamics Parameters
+CT                  = 0.109919 # Traction coefficient [-]
+CP                  = 0.040164 # Moment coefficient [-]
+rho                 = 1.225 # Air density [kg/m**3]
+k1                  = CT*rho*Diam**4
+b1                  = CP*rho*Diam**5/(2*np.pi)
+Tmax                = k1*(max_rpm/60)**2 #Max traction [N]
+Qmax                = b1*(max_rpm/60)**2 # Max moment [Nm]
+k                   = Tmax/(max_omega**2) # Traction coefficient
+b                   = Qmax/(max_omega**2) # Moment coefficient
+c                   = (0.04-0.0035) # Lumped Drag constant
+KB                  = 2 # Fountain effect (:2)
+
+# Contact Parameters
+max_disp_a          = 0.001# Max displacement in contact [m]
+n_a                 = 4 #Number of contacts [-]
+xi                  = 0.95 # Relative damping [-]
+ka                  = m*g/(n_a*max_disp_a) #Contact stiffness [N/m]
+ca                  = 2*m*np.sqrt(ka/m)*xi*1/np.sqrt(n_a) #Contact damping [Ns/m]
+mua                 = 0.5 #Coulomb friction coefficient [-]
+
+
+k1                  = CT*rho*Diam**4
+b1                  = CP*rho*Diam**5/(2*np.pi)
+Tmax                = k1*(max_rpm/60)**2 # Max
+Tmax                = k1*(max_rpm/60)**2# Max traction [N]
+Qmax                = b1*(max_rpm/60)**2# Max moment [Nm]
+k                   = Tmax/(max_omega**2)# Traction coefficient
+b                   = Qmax/(max_omega**2)# Moment coefficient
+c                   = (0.04-0.0035) # Lumped Drag constant
+KB                  = 2
+sq_ctrl_hover      = pwmHover*(max_omega**2)*((2*np.pi)**2) 
+
+
 def External_Loop(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
 
-    mass               = 1                                                      # Mass
-    I                  = np.diag([0.00234817178, 0.00366767193, 0.00573909376]) # Inertial Matrix
-    d                  = 0.2275                                                 # Center to rotor distance
-    cT                 = 0.109919                                               # Torque coefficient
-    cQ                 = 0.040164
-    air_density        = 1.225                                                  # Air density
-    propeller_diameter = 0.2286                                                 # Propeller Diameter
-    cT                 = cT*air_density*(propeller_diameter**4)                 # Thrust coefficient
-    cQ                 = 0.040164*(propeller_diameter**5)*air_density/(2*np.pi) # Drag coefficient
-    g                  = 9.81                                                   # Gravity                             
-    maxThrust          = 4.179446268                                            # Maximum thrust
-    maxtTorque         = 0.055562                                               # Maximum torque
-    pwmHover           = 0.59375                                                # PWM hover constant
-    kConst             = 0.000367717                                            # Thrust = kConst * w^2
-    sq_ctrl_hover      = pwmHover*(max_angular_vel**2)*((2*np.pi)**2)           # sq_ctrl_hover
-    
     # Get hover control action
     u0 = np.array([[m*g],[0],[0],[0]])
     
@@ -129,21 +181,6 @@ def External_Loop(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
 
 def Internal_Loop(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
 
-    mass               = 1                                                      # Mass
-    I                  = np.diag([0.00234817178, 0.00366767193, 0.00573909376]) # Inertial Matrix
-    d                  = 0.2275                                                 # Center to rotor distance
-    cT                 = 0.109919                                               # Torque coefficient
-    cQ                 = 0.040164
-    air_density        = 1.225                                                  # Air density
-    propeller_diameter = 0.2286                                                 # Propeller Diameter
-    cT                 = cT*air_density*(propeller_diameter**4)                 # Thrust coefficient
-    cQ                 = 0.040164*(propeller_diameter**5)*air_density/(2*np.pi) # Drag coefficient
-    g                  = 9.81                                                   # Gravity                             
-    maxThrust          = 4.179446268                                            # Maximum thrust
-    maxtTorque         = 0.055562                                               # Maximum torque
-    pwmHover           = 0.59375                                                # PWM hover constant
-    kConst             = 0.000367717                                            # Thrust = kConst * w^2
-    sq_ctrl_hover      = pwmHover*(max_angular_vel**2)*((2*np.pi)**2)           # sq_ctrl_hover
     
     # Get hover control action
     u0 = np.array([[m*g],[0],[0],[0]])
@@ -157,27 +194,26 @@ def Internal_Loop(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
                   [0, 0, 0, 0, 0, 0, 0, 0],                  
                   [0, 0, 0, 0, 0, 0, 0, 0],
                   [0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0],
                   [0, 0, 0, 0, 0, 0, 0, 0]])
     
-    # Matrix to convert [w1^2 w2^2 w3^2 w4^2] to [thrust, tx,ty,tz]
-    Gamma = np.array([[  cT,   cT,   cT,   cT],
-                      [ -d*cT,  d*cT, d*cT, -d*cT],
-                      [ d*cT, -d*cT,  d*cT, -d*cT],
-                      [  cQ,   cQ,    -cQ,   -cQ]])
+    # Matrix to convert [w1**2 w2**2 w3**2 w4**2] to [thrust, tx,ty,tz]
+    Gamma = np.array([[  k,   k,   k,   k],
+                      [ -np.sqrt(2)*l*k/2,  np.sqrt(2)*l*k/2, np.sqrt(2)*l*k/2, -np.sqrt(2)*l*k/2],
+                      [ -np.sqrt(2)*l*k/2, np.sqrt(2)*l*k/2,  -np.sqrt(2)*l*k/2, np.sqrt(2)*l*k/2],
+                      [  -b,   -b,    b,   b]])
     
     # Control Input matrix
-    B = np.array([[0,   0,   0,   0,  1/mass,   0 ,   0 ,     0],
-                  [0,   0,   0,   0,   0 , 1/I[0,0],   0 ,     0],
-                  [0,   0,   0,   0,   0 ,   0 , 1/I[1,1],     0],
-                  [0,   0,   0,   0,   0 ,   0 ,   0 ,   1/I[2,2]]]).T 
+    B = np.array([[0,   0,   0,   0,  1/m,   0 ,   0 ,     0],
+                  [0,   0,   0,   0,   0 , 1/Ixx,   0 ,     0],
+                  [0,   0,   0,   0,   0 ,   0 , 1/Iyy,     0],
+                  [0,   0,   0,   0,   0 ,   0 ,   0 ,   1/Izz]]).T 
     
     # Define the output matrices
     C = np.identity(8)
-    D = np.zeros((8,4))◘         
+    D = np.zeros((8,4))       
    
     # Define the state and control penalty matrices    
-    Q = np.diag([1,0,0,0,0.6,60,60,1e-5]) # np.identity(12)
+    Q = np.diag([1,1,1,1,0.6,60,60,1e-5]) # np.identity(12)
     R = 0.01*np.identity(4)
    
     # Form the contnuous state space model
@@ -189,7 +225,7 @@ def Internal_Loop(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
     # Compute the LQR gain matrix
     _, K_int = matrixmath.dare_gain(sysd[0],sysd[1], Q, R)
 
-    return K_int, u0, Gamma, cT
+    return K_int, u0, Gamma, CT
     
 ##############################################################################
 ##############################################################################
@@ -203,14 +239,16 @@ def main():
     ###################### Problem Definition Start ###########################
     ###########################################################################
 
-    Ts              = 0.01                      # Simulation Time Step    
+    Ts              = 0.0003                      # Simulation Time Step 
+    Time            = 12        
+    length          = Time/Ts    
     max_angular_vel = 6396.667*2*np.pi/60       # Maximum angular velocity
     goal_error      = 0.1                       # Error to goal tolerance  
-    k_const         = 0.000367717               # Thrust = kConst * w^2
+    k_const         = 0.000367717               # Thrust = kConst * w**2
     max_thrust      = 4.179446268               # Maximum thrust
     g               = 9.81                      # Gravity  
     mass            = 1.0                       # Mass
-    
+    pwmHover        = 0.59375 
     # Specify the goal state to be reached
     x_goal = np.array([[1.0],
                        [0.0],
@@ -239,8 +277,8 @@ def main():
     # Arm the drone
     print("arming the drone...")
     multirotorClient.armDisarm(True)
-    wind = airsim.Vector3r(0,10,0)
-    multirotorClient.simSetWind(wind)
+    # wind = airsim.Vector3r(0,10,0)
+    # multirotorClient.simSetWind(wind)
     
     # Take off
     if state.landed_state == airsim.LandedState.Landed:
@@ -265,7 +303,7 @@ def main():
     print('Air Density Ratio', air_density_ratio)
     
     # Run the loop until goal is reached
-    while not_reached((x_goal[0,0],x_goal[1,0],x_goal[2,0]), pos, goal_error):
+    for i in range(int(length)):
         
         # Get state of the multirotor
         state = multirotorClient.getMultirotorState()
@@ -330,24 +368,25 @@ def main():
         
         # Define the error to goal
         error = x - x_goal        
-        print('error=', error)        
+        # print('error=', error)        
         
         e_ext = error[[0,1,6,7],:]        
         u_ext = np.dot(K_ext, e_ext)
+        # print(u_ext)
+        e_int = error[[2, 3, 4,5,8,9,10,11],:]   
+        e_int[[1,0]] += u_ext[[0,0]]
+        e_int[[2,0]] += u_ext[[1,0]]
+        u_int = np.dot(K_int, e_int)  + u0
         
-        e_int = error[[2, u_ext[0,0], u_ext[1,0],5,8,9,10,11],:]        
-        u_int = np.dot(K_int, e_int) 
-        
-        # Add the gravity component
-        u_int += u0
         
         ##############################################################################
         ###########################  PWM CONTROL  ####################################
         # Convext [f,tx,ty,tz] to pwm
-        pwm  = np.clip(Gamma @ u_int/(max_angular_vel**2),0,1)
+        pwm  = np.clip(( Gamma.T @ u_int)/(max_omega**2),0,1)
         
         # Apply the PWM to Airsim
-        multirotorClient.moveByMotorPWMsAsync(pwm[0,0], pwm[1,0], pwm[2,0], pwm[3,0], Ts).join()
+        multirotorClient.moveByMotorPWMsAsync(pwm[0,0], pwm[1,0], pwm[2,0], pwm[3,0],Ts).join
+        time.sleep(0.01)
         
         # Infer the state after applying the control
         state = multirotorClient.getMultirotorState()
