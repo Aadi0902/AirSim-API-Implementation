@@ -406,10 +406,8 @@ def main():
     K_ext                = External_Loop(Ts, max_angular_vel)
     
     environ              = multirotorClient.simGetGroundTruthEnvironment()
-    print('Env Air Density = ', environ.air_density)
     standard_air_density = 1.225
     air_density_ratio    = environ.air_density/standard_air_density
-    print('Air Density Ratio', air_density_ratio)
     
     # Run the loop until goal is reached
     for i in range(int(length)):
@@ -509,7 +507,6 @@ def main():
         state = multirotorClient.getMultirotorState()
         pos   = state.kinematics_estimated.position
         pos   = np.array([pos.x_val,pos.y_val,pos.z_val])
-        print('Drone Position =', multirotorClient.getMultirotorState().kinematics_estimated.position)
     
     time.sleep(5)
     
