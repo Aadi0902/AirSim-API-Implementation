@@ -66,49 +66,134 @@ def GetRotationMatrix(axis_flag, angle):
 ##############################################################################
 ##############################################################################    
 
-def gain_matrix_calculator(Ts = 0.1, max_angular_vel = 6396.667 * 2* np.pi/ 60):
+# System parameters
+pwmHover            = 0.59375                                                # PWM hover constant
+max_rpm             = 6396.667
+n_motor             = 4                                                                    #Number of motors
+l                   = 0.2275                                                   # Arm length [m]
+l_arm_x             = l*np.sqrt(2)/2 #Arm length in X axis [m]
+l_arm_y             = l*np.sqrt(2)/2 #Arm length in Y axis [m]
+l_arm_z             = 0.025 #Arm length in Z axis [m]
+l_box_x             = 0.18 #Central body length in X axis [m]
+l_box_y             = 0.11 #Central body length in Y axis [m]
+l_box_z             = 0.04 #Central body length in Z axis [m]
+l_feet              = 0.1393 # Feet length in Z axis [m]
+Diam                = 0.2286 #Rotor diameter [m]
+Rad                 = Diam/2 #Rotor radius [m]
 
-    mass               = 1 - 0.055*4                                            # Mass of the quadrotor
-    I                  = np.diag([0.00234817178, 0.00366767193, 0.00573909376]) # Inertial Matrix
-    d                  = 0.2275                                                 # Center to rotor distance
-    cT                 = 0.109919                                               # Torque coefficient
-    cQ                 = 0.040164                                               # Drag coefficient
-    air_density        = 1.225                                                  # Air density
-    propeller_diameter = 0.2286                                                 # Propeller Diameter
-    cT                 = cT*air_density*(propeller_diameter**4)*((2*np.pi)**2)  # Thrust coefficient
-    cQ                 = 0.040164*(propeller_diameter**5)*air_density/(2*np.pi) # Drag coefficient
-    g                  = 9.81                                                   # Gravity                             
-    maxThrust          = 4.179446268                                            # Maximum thrust
-    maxtTorque         = 0.055562                                               # Maximum torque
-    pwmHover           = 0.59375                                                # PWM hover constant
-    kConst             = 0.000367717                                            # Thrust = kConst * w^2
-    sq_ctrl_hover      = pwmHover*(max_angular_vel**2)                          # sq_ctrl_hover
+# Mass Parameters
+m                   = 1# Mass [kg]
+m_motor             = 0.055# Motor mass [kg]
+m_box               = m-n_motor*m_motor # Central body mass [kg]
+g                   = 9.8 # Gravity [m/s**2]
+Ixx                 = m_box/12*(l_box_y**2+l_box_z**2)+(l_arm_y**2+l_arm_z**2)*m_motor*n_motor
+# Inertia in X axis [kg m**2]
+Iyy                 = m_box/12*(l_box_x**2+l_box_z**2)+(l_arm_x**2+l_arm_z**2)*m_motor*n_motor
+# Inertia in Y axis [kg m**2]
+Izz                 = m_box/12*(l_box_x**2+l_box_y**2)+(l_arm_x**2+l_arm_y**2)*m_motor*n_motor
+# Inertia in Z axis [kg m**2]
+Ir                  = 2.03e-5; # Rotor inertia around spinning axis [kg m**2]
+
+# Motor Parameters
+max_rpm             = 6396.667 # Rotor max RPM
+max_omega           = 6396.667 * 2* np.pi/ 60 #Rotor max angular velocity [rad/s]
+Tm                  = 0.005 # Motor low pass filter
+
+# Aerodynamics Parameters
+CT                  = 0.109919 # Traction coefficient [-]
+CP                  = 0.040164 # Moment coefficient [-]
+rho                 = 1.225 # Air density [kg/m**3]
+k1                  = CT*rho*Diam**4
+b1                  = CP*rho*Diam**5/(2*np.pi)
+Tmax                = k1*(max_rpm/60)**2 #Max traction [N]
+Qmax                = b1*(max_rpm/60)**2 # Max moment [Nm]
+k                   = Tmax/(max_omega**2) # Traction coefficient
+b                   = Qmax/(max_omega**2) # Moment coefficient
+c                   = (0.04-0.0035) # Lumped Drag constant
+KB                  = 2 # Fountain effect (:2)
+
+# Contact Parameters
+max_disp_a          = 0.001# Max displacement in contact [m]
+n_a                 = 4 #Number of contacts [-]
+xi                  = 0.95 # Relative damping [-]
+ka                  = m*g/(n_a*max_disp_a) #Contact stiffness [N/m]
+ca                  = 2*m*np.sqrt(ka/m)*xi*1/np.sqrt(n_a) #Contact damping [Ns/m]
+mua                 = 0.5 #Coulomb friction coefficient [-]
+
+
+k1                  = CT*rho*Diam**4
+b1                  = CP*rho*Diam**5/(2*np.pi)
+Tmax                = k1*(max_rpm/60)**2 # Max
+Tmax                = k1*(max_rpm/60)**2# Max traction [N]
+Qmax                = b1*(max_rpm/60)**2# Max moment [Nm]
+k                   = Tmax/(max_omega**2)# Traction coefficient
+b                   = Qmax/(max_omega**2)# Moment coefficient
+c                   = (0.04-0.0035) # Lumped Drag constant
+KB                  = 2
+sq_ctrl_hover      = pwmHover*(max_omega**2)
+
+
+def gain_matrix_calculator(x, Ts = 0.1): # x is the current state and Ts is the time step
+
+    # mass               = 1 - 0.055*4                                            # Mass of the quadrotor
+    # I                  = np.diag([0.00234817178, 0.00366767193, 0.00573909376]) # Inertial Matrix
+    # d                  = 0.2275                                                 # Center to rotor distance
+    # cT                 = 0.109919                                               # Torque coefficient
+    # cQ                 = 0.040164                                               # Drag coefficient
+    # air_density        = 1.225                                                  # Air density
+    # propeller_diameter = 0.2286                                                 # Propeller Diameter
+    # cT                 = cT*air_density*(propeller_diameter**4)*((2*np.pi)**2)  # Thrust coefficient
+    # cQ                 = 0.040164*(propeller_diameter**5)*air_density/(2*np.pi) # Drag coefficient
+    # g                  = 9.81                                                   # Gravity                             
+    # maxThrust          = 4.179446268                                            # Maximum thrust
+    # maxtTorque         = 0.055562                                               # Maximum torque
+    # pwmHover           = 0.59375                                                # PWM hover constant
+    # kConst             = 0.000367717                                            # Thrust = kConst * w^2
+    # sq_ctrl_hover      = pwmHover*(max_angular_vel**2)                          # sq_ctrl_hover
     
     # System dynamics matrix: states order [x y z phi theta psi u v w p q r]
-    A = np.array([[0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                  [0, 0, 0, 0,-g, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, g, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+    
+    # Linearized about [x y z 0 0 0 0 0 0 0 0 0] - final state
+    # A = np.array([[0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+    #               [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+    #               [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+    #               [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+    #               [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+    #               [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    #               [0, 0, 0, 0,-g, 0, 0, 0, 0, 0, 0, 0],
+    #               [0, 0, 0, g, 0, 0, 0, 0, 0, 0, 0, 0],
+    #               [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    #               [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    #               [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    #               [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+    
+    x = x.flatten()
+                       #0 1 2   3     4   5 6 7 8 9 10 11 
+    # Linearized about [x y z phi theta psi u v w p q r] - current state
+    A = np.array([[0, 0, 0, x[8]*x[5] + x[7]*x[4], x[8] + x[7]*x[3], x[8]*x[3] - x[7], 1, x[3]*x[4] - x[5], x[3]*x[5] + x[4], 0, 0, 0],
+                  [0, 0, 0, x[7]*x[5]*x[4] - x[8], x[7]*x[3]*x[5] + x[8]*x[5], x[7]*x[5]*x[4] + x[8]*x[4] + x[6], x[5], 1 + x[3]*x[4]*x[5], x[5]*x[4]-x[3], 0, 0, 0],
+                  [0, 0, 0, x[7], -x[6], 0, -x[4], x[3], 1, 0, 0, 0],
+                  [0, 0, 0, x[10]*x[4], x[11], 0, 0, 0, 0, 1, x[3]*x[4], x[4]],
+                  [0, 0, 0, -x[11], 0, 0, 0, 0, 0, 0, 1, -x[3]],
+                  [0, 0, 0, x[10], 0, 0, 0, 0, 0, 0, x[3], 1],
+                  [0, 0, 0, 0,-g, 0, 0, x[11], -x[10], 0, -x[8], x[7]],
+                  [0, 0, 0, g, 0, 0, -x[11], 0, x[9], x[8], 0, -x[6]],
+                  [0, 0, 0, 0, 0, 0, x[10], -x[9], 0, -x[7], x[6], 0],
+                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ((Iyy - Izz)/Ixx)*x[11], ((Iyy - Izz)/Ixx)*x[10]],
+                  [0, 0, 0, 0, 0, 0, 0, 0, 0, ((Izz - Ixx)/Iyy)*x[11], 0, ((Izz - Ixx)/Iyy)*x[9]],
+                  [0, 0, 0, 0, 0, 0, 0, 0, 0, ((Ixx - Iyy)/Izz)*x[10], ((Ixx - Iyy)/Izz)*x[9], 0]])
     
     # Matrix to convert [w1^2 w2^2 w3^2 w4^2] to [thrust, tx,ty,tz]
-    Gamma = np.array([[  cT,   cT,   cT,   cT],
-                      [ -d*cT,  d*cT, d*cT, -d*cT],
-                      [ d*cT, -d*cT,  d*cT, -d*cT],
-                      [  cQ,   cQ,    -cQ,   -cQ]])
+    Gamma = np.array([[  k,   k,   k,   k],
+                      [ -np.sqrt(2)*l*k/2,  np.sqrt(2)*l*k/2, np.sqrt(2)*l*k/2, -np.sqrt(2)*l*k/2],
+                      [ -np.sqrt(2)*l*k/2, np.sqrt(2)*l*k/2,  -np.sqrt(2)*l*k/2, np.sqrt(2)*l*k/2],
+                      [  -b,   -b,    b,   b]])
     
     # Control Input matrix
-    B = np.array([[0,   0,   0,   0,   0,   0,   0,   0,  1/mass,   0 ,   0 ,     0],
-                  [0,   0,   0,   0,   0,   0,   0,   0,   0 , 1/I[0,0],   0 ,     0],
-                  [0,   0,   0,   0,   0,   0,   0,   0,   0 ,   0 , 1/I[1,1],     0],
-                  [0,   0,   0,   0,   0,   0,   0,   0,   0 ,   0 ,   0 ,   1/I[2,2]]]) 
+    B = np.array([[0,   0,   0,   0,   0,   0,   0,   0,  -1/m,   0 ,   0 ,     0],
+                  [0,   0,   0,   0,   0,   0,   0,   0,   0 , 1/Ixx,   0 ,     0],
+                  [0,   0,   0,   0,   0,   0,   0,   0,   0 ,   0 , 1/Iyy,     0],
+                  [0,   0,   0,   0,   0,   0,   0,   0,   0 ,   0 ,   0 ,   1/Izz]]) 
     
     # Change B matrix to have [w1^2 w2^2 w3^2 w4^2] as control inputs
     B = B.T @ Gamma
@@ -151,16 +236,12 @@ def main():
     ###########################################################################
 
     Ts              = 0.001              # Simulation Time Step    
-    max_angular_vel = 6396.667*2*np.pi/60 # Maximum angular velocity
     goal_error      = 0.3                 # Distance tolerance to the goal
-    k_const         = 0.000367717         # Thrust = kConst * w^2
-    max_thrust      = 4.179446268         # Maximum thrust
-    g               = 9.81                # Gravity  
-    mass            = 1.0                 # Mass
+
     
     # Specify the goal state to be reached
-    x_goal = np.array([[-1.0],
-                       [-10.0],
+    x_goal = np.array([[1.0],
+                       [0.0],
                        [-5.0],
                        [0.0],
                        [0.0],
@@ -200,7 +281,7 @@ def main():
     print('Drone Start Positions: x =', pos[0], 'y =', pos[1], 'z =', pos[2]) 
     
     # Create new file for soring values
-    file = open('Expt1.csv', 'w+', newline ='') 
+    # file = open('Expt1.csv', 'w+', newline ='') 
     
     # Store current state
     totalTS      = 0
@@ -223,8 +304,6 @@ def main():
     standard_air_density = 1.225
     air_density_ratio    = environ_air_sensity/standard_air_density
     
-    # Get the LQR gain matrix
-    K, u_bar, Gamma = gain_matrix_calculator(Ts, max_angular_vel)
     
     # Run the loop until goal is reached
     while True:
@@ -312,6 +391,9 @@ def main():
         error = x - x_goal        
         # print('error=', error)
         
+        # Get the LQR gain matrix
+        K, u_bar, Gamma = gain_matrix_calculator(x, Ts)
+        
         # Compute the desired control inputs - [w1^2 w2^2 w3^2 w4^2] 
         u_ang_vel = np.dot(K, error)        
                 
@@ -330,7 +412,7 @@ def main():
         # u_ang_vel = u_ang_vel/((2*np.pi)**2)
         
         # Compute the required PWM control inputs for the four rotors
-        pwm = u_ang_vel/(air_density_ratio*max_angular_vel**2)     
+        pwm = u_ang_vel/(air_density_ratio*max_omega**2)     
         
         for kk in range(pwm.shape[0]):
             if pwm[kk] > 1:
@@ -361,7 +443,7 @@ def main():
         pos_y_hist.append(pos[1])
         pos_z_hist.append(pos[2])
     
-
+    time.sleep(10)
     # Prepare for plotting
     pos_z_hist  = [-x for x in pos_z_hist]
     goal_x_hist = [x_goal[0,0]]*len(pos_x_hist)  

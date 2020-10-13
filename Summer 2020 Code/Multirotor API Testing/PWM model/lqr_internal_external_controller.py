@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Sun Oct  4 11:19:10 2020
-
-@author: vxr131730
-"""
 ##############################################################################
 ##############################################################################
 ###########################  IMPORT LIBRARIES ################################
@@ -95,7 +90,47 @@ b                   = Qmax/(max_omega**2)# Moment coefficient
 c                   = (0.04-0.0035) # Lumped Drag constant
 KB                  = 2
 sq_ctrl_hover       = pwmHover*(max_omega**2)*((2*np.pi)**2) 
+#<<<<<<< Updated upstream
+#=======
 
+
+###############################################################################
+##############################################################################
+###########################  DEFINE THE FUNCTIONS  ###########################
+##############################################################################
+##############################################################################
+#>>>>>>> Stashed changes
+
+def not_reached(pt1, pt2, dist):
+    if np.linalg.norm(pt1[0:3] - pt2[0:3]) > dist:
+        return True
+    else:
+        return False
+    
+##############################################################################
+##############################################################################
+
+def GetRotationMatrix(axis_flag, angle):
+    if axis_flag == 1: # x axis
+        rotationMatrix = np.array([[1, 0, 0],
+                                   [0, np.cos(angle), -np.sin(angle)],
+                                   [0, np.sin(angle), np.cos(angle)]])
+        
+    if axis_flag == 2: # y axis
+        rotationMatrix = np.array([[np.cos(angle), 0, np.sin(angle)],
+                                   [0, 1, 0],
+                                   [-np.sin(angle), 0, np.cos(angle)]])
+        
+    if axis_flag == 3: # z axis
+        rotationMatrix = np.array([[np.cos(angle), -np.sin(angle), 0],
+                                   [np.sin(angle), np.cos(angle), 0],
+                                   [0, 0, 1]])
+    
+    return rotationMatrix
+
+    
+##############################################################################
+##############################################################################
 
 ##############################################################################
 ##############################################################################
@@ -346,6 +381,9 @@ def main():
     Ts              = 0.0003                      # Simulation Time Step 
     Time            = 12        
     length          = Time/Ts    
+#<<<<<<< HEAD
+
+#=======
     max_angular_vel = 6396.667*2*np.pi/60       # Maximum angular velocity
     goal_error      = 0.1                       # Error to goal tolerance  
     k_const         = 0.000367717               # Thrust = kConst * w**2
@@ -358,6 +396,10 @@ def main():
     Q = np.diag([1,1,1,1,1,1,1,1,0.6,60,60,1e-5]) # np.identity(12)
     R = 0.01*np.identity(4)
     
+#<<<<<<< Updated upstream
+#=======
+#>>>>>>> de2a8c1b952a31016618be0cf021ee515fb367da
+#>>>>>>> Stashed changes
     # Specify the goal state to be reached
     x_goal = np.array([[1.0],
                        [0.0],
@@ -402,8 +444,8 @@ def main():
     pos = np.array([pos.x_val,pos.y_val,pos.z_val]) 
     
     # Get the LQR gain matrix
-    K_int, u0, Gamma, cT = Internal_Loop(Ts, max_angular_vel)
-    K_ext                = External_Loop(Ts, max_angular_vel)
+    K_int, u0, Gamma, cT = Internal_Loop(Ts, max_omega)
+    K_ext                = External_Loop(Ts, max_omega)
     
     environ              = multirotorClient.simGetGroundTruthEnvironment()
     standard_air_density = 1.225
