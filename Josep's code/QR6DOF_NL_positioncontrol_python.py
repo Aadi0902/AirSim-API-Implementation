@@ -61,7 +61,7 @@ client.enableApiControl(True)
 client.armDisarm(True)
 
 # Control time step, simulation time, physical Airsim clock speed
-T = 0.001
+T = 0.001/4
 Time = 10
 len = Time/T
 
@@ -86,7 +86,7 @@ x_ctr_2_2    = mat_contents['x_ctr_2_2']
 # Control Loop
 " Reference "
 R_X   =  5; t_X   = 4
-R_Y   =  5; t_Y   = 1
+R_Y   =  10; t_Y   = 1
 R_Z   =  5; t_Z   = 0
 R_psi =  -30*np.pi/180; t_psi = 2
 Ref2                  = np.zeros((int(len),2))
@@ -113,7 +113,7 @@ for i in range(int(len)):
     pwm = np.clip(mixer@u[i]/(669.8574**2),0,1)  
     client.moveByMotorPWMsAsync(pwm[0], pwm[1], pwm[2], pwm[3], 5)
 
-    time.sleep((i+1)*T-(t[i]-t[0]))
+    time.sleep(max((i+1)*T-(t[i]-t[0]),0))
 
 # Final states, control actions and times
 [x[i+1],t[i+1]] = get_states_qr()
