@@ -85,10 +85,10 @@ x_ctr_2_2    = mat_contents['x_ctr_2_2']
 
 # Control Loop
 " Reference "
-R_X   =  5; t_X   = 4
-R_Y   =  10; t_Y   = 1
-R_Z   =  5; t_Z   = 0
-R_psi =  -30*np.pi/180; t_psi = 2
+R_X   =  0; t_X   = 4
+R_Y   =  0; t_Y   = 1
+R_Z   =  10; t_Z   = 0
+R_psi =  -90*np.pi/180; t_psi = 2
 Ref2                  = np.zeros((int(len),2))
 Ref1                  = np.zeros((int(len),4))
 Ref2[int(t_X/T):,0]   = R_X
